@@ -1,4 +1,5 @@
 import boto3
+import botocore
 import click
 session = boto3.Session(profile_name='ec2-analyzer')
 ec2 = session.resource('ec2')
@@ -33,9 +34,21 @@ def creatSnapshot(project):
 	"createing snapshot"
 	instances = getInstances(project)
 	for i in instances:
-		for v in i.volumes.all():
-			print("Createing snapshot of {0} ...".format(v.id))
-			v.create_snapshot(Description="Created by EC2 analyzer")
+		print("Stoping instance {0}".format(i.id))
+		try:
+			i.stop()
+		except botocore.exceptions.ClientError as e:
+			print("Instance {0} could not be stoped, snapshot not created".format(i.id))
+		else:
+			i.wait_until_stopped()
+			for v in i.volumes.all():
+				print("Createing snapshot of {0} ...".format(v.id))
+				v.create_snapshot(Description="Created by EC2 analyzer")
+			print("Starting instance {0}".format(i.id))
+			i.start()
+			i.wait_until_running()
+			print("Instance {0} started".format(i.id))
+
 	return
 
 
@@ -68,23 +81,27 @@ def getInstances(project):
 
 @instances.command('start')
 @click.option('--project', default=None, help="only instances for project (tag Project:<name>)")
-def stopEC2Instance(project):
+def startEC2Instance(project):
 	"Starts EC2"
 	instances = getInstances(project)
-	print(', '.join(('ID','Availability Zone','State','Public DNS', 'Project')))
 	for i in instances:
 		print("Starting {0} ...".format(i.id))
-		i.start()
-
+		try:
+			i.start()
+		except botocore.exceptions.ClientError as e:
+			print("Instance {0} could not be started".format(i.id))
+			
 @instances.command('stop')
 @click.option('--project', default=None, help="only instances for project (tag Project:<name>)")
 def stopEC2Instance(project):
 	"Stops EC2"
 	instances = getInstances(project)
-	print(', '.join(('ID','Availability Zone','State','Public DNS', 'Project')))
 	for i in instances:
 		print("Stoping {0} ...".format(i.id))
-		i.stop()
+		try:
+			i.stop()
+		except botocore.exceptions.ClientError as e:
+			print("Instance {0} could not be stopped".format(i.id))
 	
 @instances.command('list')
 @click.option('--project', default=None, help="only instances for project (tag Project:<name>)")
